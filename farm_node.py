@@ -21,11 +21,17 @@ PROMPTS = {
 SEARCHERS = {"researcher", "scout", "analyst"}
 
 def web_search(q):
+    key = os.environ.get("TAVILY_API_KEY")
+    if not key:
+        return "(no TAVILY_API_KEY set)"
     try:
-        r = requests.get("https://duckduckgo.com/html/", params={"q": q},
-                         headers={"user-agent": "Mozilla/5.0"}, timeout=20)
-        hits = re.findall(r'result__snippet[^>]*>(.*?)</a>', r.text)[:5]
-        return "\n".join("- " + re.sub("<[^>]+>", "", h).strip() for h in hits) or "(no results)"
+        r = requests.post("https://api.tavily.com/search",
+                          json={"api_key": key, "query": q,
+                                "max_results": 5, "search_depth": "basic"}, timeout=25)
+        r.raise_for_status()
+        res = r.json().get("results", [])
+        return "\n".join("- %s: %s" % (x.get("title",""), (x.get("content","") or "")[:220])
+                         for x in res) or "(no results)"
     except Exception as e:
         return f"(search failed: {e})"
 
