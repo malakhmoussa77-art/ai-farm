@@ -23,17 +23,18 @@ SEARCHERS = {"researcher", "scout", "analyst"}
 def web_search(q):
     key = os.environ.get("TAVILY_API_KEY")
     if not key:
-        return "(no TAVILY_API_KEY set)"
+        return "(no TAVILY_API_KEY env reached the agent)"
     try:
         r = requests.post("https://api.tavily.com/search",
                           json={"api_key": key, "query": q,
                                 "max_results": 5, "search_depth": "basic"}, timeout=25)
-        r.raise_for_status()
+        if r.status_code != 200:
+            return "(tavily HTTP %s: %s)" % (r.status_code, r.text[:120])
         res = r.json().get("results", [])
         return "\n".join("- %s: %s" % (x.get("title",""), (x.get("content","") or "")[:220])
-                         for x in res) or "(no results)"
+                         for x in res) or "(tavily returned 0 results)"
     except Exception as e:
-        return f"(search failed: {e})"
+        return f"(search exception: {e})"
 
 def think(system, user):
     if not GROQ:
@@ -51,7 +52,8 @@ def queue(agent, goal, priority=5):
                   json={"agent": agent, "goal": goal, "priority": priority})
 
 def run(goal):
-    ctx = f"\n\nSEARCH RESULTS:\n{web_search(goal)}" if ROLE in SEARCHERS else ""
+    search = web_search(goal) if ROLE in SEARCHERS else ""
+    ctx = f"\n\nSEARCH RESULTS:\n{search}" if search else ""
     out = think(PROMPTS.get(ROLE, PROMPTS["researcher"]), goal + ctx)
     if ROLE == "commander":
         try:
@@ -61,6 +63,8 @@ def run(goal):
             return f"Dispatched {len(subs)} subtasks:\n" + "\n".join(f"- {s['agent']}: {s['goal']}" for s in subs)
         except Exception:
             return out
+    if ROLE in SEARCHERS:
+        return f"[debug: search returned → {search[:160]}]\n\n{out}"
     return out
 
 def beat():
@@ -81,11 +85,9 @@ def main():
                                  json={"agent": ROLE, "node": NODE}, timeout=30).json().get("task")
             if not task:
                 time.sleep(6); continue
-            print(f"[{NODE}] task {task['id']}: {task['goal'][:60]}")
             result = run(task["goal"])
             requests.post(f"{FARM_URL}/complete", headers=H,
                           json={"id": task["id"], "result": result}, timeout=30)
-            print(f"[{NODE}] done {task['id']}")
         except Exception as e:
             print(f"[{NODE}] error: {e}"); time.sleep(8)
 
