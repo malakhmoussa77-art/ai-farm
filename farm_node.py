@@ -62,9 +62,11 @@ def run(goal):
                 queue(s["agent"], s["goal"])
             return f"Dispatched {len(subs)} subtasks:\n" + "\n".join(f"- {s['agent']}: {s['goal']}" for s in subs)
         except Exception:
+            
+            
+            
+            
             return out
-    if ROLE in SEARCHERS:
-        return f"[debug: search returned → {search[:160]}]\n\n{out}"
     return out
 
 def beat():
